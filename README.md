@@ -8,7 +8,10 @@ Qthreads - UserSpace cooperative threading library
 ## Usage?
 
 1\. The functions provided by the thread library allow users to implement their own functions which accept a single argument, pass a pointer and a variable to thread on creation, and manage the thread execution with mutex variables, condition variables, and thread join functions.
-### Usage Samples in test files: [a relative link](test1.c)
+### Usage Samples in test files: 
+1. [Test1](test1.c) - Test creation of multiple threads calling same function, and different variables, confirms correct independent processing.
+2.  [Test2](test2.c) - Tests creation and usage of mutex and thread sleep functionality, with two threads incrementing common counter in function, where we sleep with mutex acquired.
+3. [Test3](test3.c) - Testing condition variables, mutexes, and thread sleep usage, with a simple signal, followed by broadcast signal to wake up all threads.
 
 ## What are its limitations?
 
