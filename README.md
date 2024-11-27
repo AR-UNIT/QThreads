@@ -1,169 +1,57 @@
-Lab 3 - User-space thread library
-=======================
+Qthreads - UserSpace cooperative threading library
 
-In this homework you will write a user-space thread system (named “qthreads”, vs. the standard “pthreads” library), which creates threads, performs context switches, and includes implementations of mutexes and condition variables. You will be responsible for writing a thorough test suite for your code.
+## What is it?
 
-Rules
------
+1. This project implements a User-space thread library in C, like the POSIX threads library.
+2. It implements “green threads", i.e. cooperative threads with no preemption.
 
-Feel free to discuss the ideas in the assignment with other groups, or on Piazza; howeversharing of code across groups or use of code copied from the internet is not allowed. You do not need to explicitly submit your assignment – your grade will be based on the code in your repository at the time it is due.
+## Usage?
 
-**Commit and push your code at the end of every day that you work on it**, or (preferably) more frequently. **Include a commit message which describes what you have done**.
-You should push your changes even if your code isn't working - you can always go "backwards" in Git to restore a working version. (feel free to ask on Piazza if you need help with this)
+1\. The functions provided by the thread library allow users to implement their own functions which accept a single argument, pass a pointer and a variable to thread on creation, and manage the thread execution with mutex variables, condition variables, and thread join functions.
 
-**If you do not push your code sufficiently frequently, or fail to provide comments describing your work, you may lose points.**
+## What are its limitations?
 
-Note that code similarity between groups, a lack of understanding of your submitted code, or evidence of variables changed by search-and-replace may be considered evidence of academic dishonesty.
+1. Only developed and supported on Ubuntu for x86 and aarch64 systems. The context switching function (saving and switching between stack pointers between 2 threads) is written in assembly and supported in Ubuntu only.
+2. Does not support pre-emption, only cooperative threading, with the expectation that the user of this threading library will use thread yielding function appropriately & frequently to avoid deadlock scenarios.
+3. Does not support more than 32 sleeping threads at a single time.
+4. Does not support more than 1 thread waiting at join for a thread to exit.
 
-Materials and resources
--------------------------------------------
+## Thread Structure / Representation
 
-You will download the skeleton code for the assignment from the CCIS GitHub  server, github.ccs.neu.edu, using the 'git clone' command:
-```
- git clone https://github.ccs.neu.edu/cs5600-f24/team-N-hw3
-```
-where *N* is your team number. Periodically you will commit checkpoints of your work into your local repository using 'git commit':
-```
-    git commit -a -m 'message describing the checkin'
-```
-(or enter a message in the text editor) and push the commits to the central repository:
-```
-	git push
-```
-You are expected to complete this assignment on the CS 5600 virtual machine, either on an Intel or Apple 64-bit CPU (x86-64 or aarch64 architecture). 
-Due to the use of machine and OS-specific assembly code in the `switch_thread` function, the provided code is **not** expected to work under either Windows or MacOS.
+struct qthread { /\* your code here \*/; struct qthread \*next;
 
-Repository Contents
------------------
+/\* need this stack base pointer to let us free space allocated for stack once thread exits \*/ void \*stack; void \*saved_sp; int exited_flag; void \*exit_val;
 
-The repository you clone contains the following files:
+struct qthread \*waiting_for_me; /\* pointer to thread waiting for this thread to exit to do join \*/ long wake_time;
 
-* `qthread.c` – this is the file you will be implementing. It has some comments describing the functions and types you have to implement.
-* `qthread.h` – analogous to pthread.h, this defines the types used by qthread applications. Note that I've defined qthread_mutex_t and qthread_cond_t as structures with a single pointer to an “implementation” structure that you'll define in qthread.c.
-* `switch.S` – this file contains the context switch function (`switch_thread`) and the stack initialization function (`setup_stack`). You don't need to understand these files - the code is considerably more complex than discussed in class because of (a) alignment constraints on modern CPUs and (b) additional debug code.
-* `test.c` – this is where your test code should go. (you may also add additional C files and Makefile targets if you wish)
-* `Makefile` – this is set up to build the `test` executable. Compile your code by typing ‘make’. 
+};
 
-Deliverables
-----------
-The following files from your repository will be examined, tested, and graded:
-* `qthread.c`
-* `test.c`
+## Functions Provided:
 
-Assignment description
---------------------
+### Thread library initialization:
 
-You will need to implement all the functions in the "qthreads" interface described below. To do this you'll almost certainly want to use the following design elements:
+- void qthread_init(void) = function to initialize the threading library and its structures/variables for proper thread queueing/scheduling. Maintains a struct to represent the original OS created thread which calls this library.
 
-* a per-thread structure (let's call it `struct qthread`), holding the following information:
-  * next pointer
-  * saved stack pointer
-  * timing information (see `qthread_sleep`)
+### Thread management:
 
-* a FIFO queue of thread structures (let's call it `struct qthread_queue`) for the active list and for lists of threads waiting on various things. (with a head and tail pointer, an `append` function that adds to the tail, a `pop` function that pops from the head, and an `empty` function to see if it's empty or not.
+- qthread_t qthread_create(f_1arg_t f, void \*arg1) = function to create a thread structure with appropriate thread management variables and accepts a function pointer(f_1arg_t f), and parameter pointer (void \*arg1), which is to be passed to function to be executed by the thread.
+- void qthread_exit(void \*val) = called by qthread_create after execution of the of the function passed in qthread_create. The exit function accepts a return value from the function executed.qthread_exit sets this value in the thread structure and puts any threads waiting for current thread exit to join on the active queue of threads.
+- void qthread_yield(void) = function to put current running thread to the end of the active threads queue and execute thread at the front of the active threads queue.
+- void \*qthread_join(qthread_t thread) = function which accepts a pointer to a thread, and waits for the thread to exit and then get its return value. This function allows a thread to be joined by the current running thread.
 
-* the scheduling pattern described in lecture:
-  * `struct qthread *current` - points to currently executing thread
-  * `struct qthread_queue active` - list of threads that are ready to run (i.e. not sleeping)
+### Mutexes and condition variables:
 
-* the set of threads waiting for a timeout
+- qthread_mutex_t \*qthread_mutex_create(void) = creates a mutex queue & lock variable
+- void qthread_mutex_lock(qthread_mutex_t \*m) = acquires lock, or puts in mutex_queue
+- void qthread_mutex_unlock(qthread_mutex_t \*m) = releases lock
+- void qthread_mutex_destroy(qthread_mutex_t \*m) = destroys/frees mutex variable
+- qthread_cond_t \*qthread_cond_init(qthread_cond_t \*c) = creates a condition variable queue
+- void qthread_cond_wait(qthread_cond_t \*c, qthread_mutex_t \*m) = puts current thread onto condition variable queue
+- void qthread_cond_signal(qthread_cond_t \*c) = wakes up first thread in condition variable queue by putting it on the active queue
+- void qthread_cond_broadcast(qthread_cond_t \*c) = wakes up all threads in condition variable queue and puts them all on active queue
+- void qthread_cond_destroy(qthread_cond_t \*c) = destroys/frees condition variable
 
-As always I would suggest the absolutely simplest data structures to accomplish the job.
-In particular, I would suggest implementing the thread set as an array of pointers:
+### Sleeping Threads 
+ - void qthread_usleep(long int usecs) = puts currently running thread to sleep for usec amount of microseconds, sleeping threads maintained in an array holding 32 pointers to thread structs/null, thus sleeping threads limit is 32.
 
-* insert into the set by searching for an index holding NULL and setting it to the pointer value
-* find a match item by exhaustive search
-* remove a pointer by replacing it with NULL
-You can assume there will never be more than 32 threads in total.
-
-### Typedefs (provided in the qthread.h file)
-
-The following typedefs are defined:
-* `typedef struct qthread *qthread_t` - you need to define `struct qthread` in `qthread.c`
-* `typedef void * (*f_1arg_t)(void*)` - this is the function argument to `qthread_create`; it takes a single `void*` argument, and returns `void*`;
-* `typedef void (*f_2arg_t)(f_1arg_t, void*)` - this is the function argument to `setup_stack`; it takes 2 arguments, the first of which is a `f_1arg_t`
-
-Finally, `qthread_mutex_t` and `qthread_cond_t` are defined as pointers to `struct qthread_mutex` and `struct qthread_cond`; you will need to define both structures in your code.
-
-### Functions (you implement)
-
-Note that except for the first function, these are basically the POSIX thread functions with simplified interfaces. First the basic thread functions:
-
-* `void qthread_init(void)` - this initializes your thread implementation
-* `qthread_t qthread_create(f_1arg_t f, void *arg1)` - create a thread which executes `f(arg1)`.
-* `void qthread_exit(void *val)` - exit (i.e. switch to another thread and never return) and save `val` as return value (see `qthread_join`)
-* `void qthread_yield(void)` - put self on tail of active list and switch to the next active thread
-* `void *qthread_join(qthread_t thread)` - wait for a thread to exit and get its return value. A thread can only be "joined" by one other thread. (i.e. it's OK to crash if two threads call join on the same thread)
-
-Then mutexes and condition variables:
-
-* `qthread_mutex_t *qthread_mutex_create(void)` 
-* `void qthread_mutex_lock(qthread_mutex_t *m)`
-* `void qthread_mutex_unlock(qthread_mutex_t *m)`
-* `void qthread_mutex_destroy(qthread_mutex_t *m)`
-
-* `qthread_cond_t *qthread_cond_init(qthread_cond_t *c)`
-* `void qthread_cond_wait(qthread_cond_t *c, qthread_mutex_t *m)`
-* `void qthread_cond_signal(qthread_cond_t *c)`
-* `void qthread_cond_broadcast(qthread_cond_t *c)`
-* `void qthread_cond_destroy(qthread_cond_t *c)`
-
-And finally a sleep function, with the same interface as the Unix `usleep` function:
-
-* `void qthread_usleep(long int microsecs)`
-
-## Hints and advice
-
-`qthread_init` - this is going to have to allocate a thread structure for the current (OS-provided) thread and put it on `current`, so that things don't crash when you try to switch to another thread.
-
-`qthread_create` - qthreads allows you to return from the thread function, just like you can return from `main` in a normal program; however you hopefully remember that you can't return from a thread or process - you have to exit. So you need to have a "wrapper" function which calls the thread function and then calls `qthread_exit` when it returns. A possible approach is:
-```
-qthread_t create_2arg_thread(f_2arg_t f, void *arg1, void *arg2)
-{
-  /* do all your thread creation stuff */
-}
-void wrapper(void *arg1, void *arg2)
-{
-    f_1arg_t f = arg1;
-    void *tmp = f(arg2);
-    qthread_exit(tmp);
-}
-qthread_t qthread_create(f_1arg_t f, void *arg)
-{
-    return create_2arg_thread(wrapper, f, arg);
-}
-```
-
-`qthread_exit` and `qthread_join` - You're going to have to stash the return value (from 'exit') in the thread structure so that 'join' can retrieve it. If 'join' is called first, it has to sleep until the other thread calls 'exit', which wakes it up. This means you're going to need the following fields in your thread structure:
-
-* return value (i.e. the argument to 'exit')
-* flag indicating whether 'exit' was already called
-* pointer to a thread waiting in 'join' (or NULL if there isn't one)
-
-**Current/Active**
-Here are the possible ways that we can manipulate *current* and *active* for thread scheduling:
-
-1. give another thread a turn (but don't sleep):  
-append *current* to tail of *active*  
-*current* = [remove head of *active*]  
-switch to new *current*  
-  
-2. go to sleep (block on mutex / wait on condvar / wait in usleep) :  
-[somewhere] = current  
-*current* = [remove head of *active*]  
-switch to new *current*  
-  
-3. wake another thread up (without switching)
-   *th* = [somewhere]
-   append *th* to tail of *active*
-
-In each case you put pointer to the current thread somewhere safe (but not on the active list), and then switch to the next thread in *active*. Similarly, waking another thread up means taking a pointer to that thread from somewhere and putting it back on the active list.
-
-Traditionally the two steps:
-
-* *current* = [remove head of *active*]
-* switch to new *current*
-
-are combined into a function called `schedule`, which picks the next thread and switches to it. (factoring this out might be useful when you write `qthread_usleep`, as it will make that scheduling decision more complex)
-
-Finally, note that qthreads doesn't have to be big and complex - it’s possible to implement it in less than 300 lines of code.
+## Thread State Diagram
